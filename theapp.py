@@ -1,6 +1,5 @@
-from flask import Flask, render_template, jsonify, request
-from if_mt_control_class import AirQualityControlSystem
-from db import sql_connect, insert_data
+from flask import Flask, render_template, jsonify
+from db import sql_connect, get_all_sensor_data  # get_all_sensor_data 추가
 from time import sleep
 
 app = Flask(__name__)
@@ -8,31 +7,33 @@ app = Flask(__name__)
 # 전역 변수로 창문 상태 관리
 window_state = "closed"
 
-# Air Quality Control System 초기화
-air_quality_system = AirQualityControlSystem(dust_threshold=5)
-
 @app.route('/')
 def index():
-    # 웹에서 보여줄 현재 센서 상태 가져오기
+    # 데이터베이스에서 센서 데이터 가져오기
+    conn = sql_connect()
+    sensor_data = get_all_sensor_data(conn)  # DB에서 센서 데이터 가져오기
+    conn.close()
+
+    # 데이터를 딕셔너리로 변환하여 웹에 전달
     data = {
-        "temperature": 22.87,  # 예시 데이터 (이 부분은 실제 데이터로 바꿔주세요)
-        "humidity": 51.82,
-        "pressure": 1015.47,
-        "wind_direction": "ESE",
-        "wind_speed": 0.0,
-        "rainfall": 0.0,
-        "dust": 8,
-        "window_state": window_state  # 현재 창문 상태 표시
+        "temperature": sensor_data[0],  # 온도
+        "humidity": sensor_data[1],     # 습도
+        "pressure": sensor_data[2],     # 압력
+        "wind_direction": sensor_data[3],  # 풍향
+        "wind_speed": sensor_data[4],   # 풍속
+        "rainfall": sensor_data[5],     # 강수량
+        "dust": sensor_data[6],         # 미세먼지
+        "window_state": sensor_data[7]  # 창문 상태
     }
+    
     return render_template('index.html', data=data)
 
 @app.route('/update', methods=['POST'])
 def update_window_state():
     global window_state
     # 사용자가 창문을 열거나 닫을 때 처리
-    action = request.json.get('action')  # POST 데이터에서 'action'을 가져옵니다.
-
-    # 창문 상태 제어
+    action = request.form.get('action')
+    
     if action == 'open' and window_state == 'closed':
         # 창문 열기
         air_quality_system.window_control.open_window()
@@ -43,27 +44,30 @@ def update_window_state():
         window_state = "closed"
     else:
         return jsonify({"status": "error", "message": f"Window is already {window_state}."})
-
-    # 데이터베이스에 상태 저장 (여기서는 예시로 임시 데이터만 사용)
+    
+    # 데이터베이스에 상태 저장
     conn = sql_connect()
-    insert_data(conn, (22.87, 51.82, 1015.47, 'ESE', 0.0, 0.0, 8, window_state))  # 삽입 예시
+    insert_data(conn, (22.87, 51.82, 1015.47, 'ESE', 0.0, 0.0, 8, window_state))  # 예시 데이터 삽입
     conn.close()
-
+    
     return jsonify({"status": "success", "message": f"Window is now {window_state}."})
 
 @app.route('/api/data', methods=['GET'])
 def get_sensor_data():
-    # 여기서 실제 센서 데이터를 가져오는 로직을 작성합니다.
-    # 예시 데이터 반환
+    # DB에서 센서 데이터를 가져오는 로직
+    conn = sql_connect()
+    sensor_data = get_all_sensor_data(conn)
+    conn.close()
+
     data = {
-        "temperature": 22.87,
-        "humidity": 51.82,
-        "pressure": 1015.47,
-        "wind_direction": "ESE",
-        "wind_speed": 0.0,
-        "rainfall": 0.0,
-        "dust": 8,
-        "window_state": window_state
+        "temperature": sensor_data[0],
+        "humidity": sensor_data[1],
+        "pressure": sensor_data[2],
+        "wind_direction": sensor_data[3],
+        "wind_speed": sensor_data[4],
+        "rainfall": sensor_data[5],
+        "dust": sensor_data[6],
+        "window_state": sensor_data[7]
     }
     return jsonify(data)
 
