@@ -30,8 +30,9 @@ def index():
 def update_window_state():
     global window_state
     # 사용자가 창문을 열거나 닫을 때 처리
-    action = request.form.get('action')
-    
+    action = request.json.get('action')  # POST 데이터에서 'action'을 가져옵니다.
+
+    # 창문 상태 제어
     if action == 'open' and window_state == 'closed':
         # 창문 열기
         air_quality_system.window_control.open_window()
@@ -42,12 +43,12 @@ def update_window_state():
         window_state = "closed"
     else:
         return jsonify({"status": "error", "message": f"Window is already {window_state}."})
-    
+
     # 데이터베이스에 상태 저장 (여기서는 예시로 임시 데이터만 사용)
     conn = sql_connect()
     insert_data(conn, (22.87, 51.82, 1015.47, 'ESE', 0.0, 0.0, 8, window_state))  # 삽입 예시
     conn.close()
-    
+
     return jsonify({"status": "success", "message": f"Window is now {window_state}."})
 
 @app.route('/api/data', methods=['GET'])
