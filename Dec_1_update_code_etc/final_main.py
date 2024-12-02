@@ -4,6 +4,7 @@ from wind_class import WindDirectionSensor
 from rain_class import RainSensor
 from usb_serial_class import USBSerial  # USBSerial 클래스 가져오기
 from wind_speed_class import WindSpeedSensor  # WindSpeedSensor 클래스 가져오기
+from if_mt_control_class import MotorController  # MotorController 클래스 임포트
 
 def main():
     # Initialize sensors
@@ -15,6 +16,12 @@ def main():
     # Initialize USB Serial
     usb_serial = USBSerial(port='/dev/ttyACM0', baudrate=9600, timeout=1)
 
+    # Initialize MotorController for window control
+    motor_controller = MotorController(steps_per_revolution=82, pins=[12, 16, 20, 21])  # 스텝 모터 핀 설정
+
+    window_state = "closed"  # 초기 창문 상태
+    dust_threshold = 5  # 미세먼지 임계값 설정
+
     try:
         # Open the USB serial port
         usb_serial.open()
@@ -25,34 +32,42 @@ def main():
 
             # If USB data is received, read other sensor data
             if usb_received_data:
-                temperature = bme280.read_temperature()
-                humidity = bme280.read_humidity()
-                pressure = bme280.read_pressure()
-                altitude = bme280.read_altitude()
-                wind_direction = wind_sensor.get_direction()
-                rainfall = rain_sensor.get_rainfall()
-                wind_speed = wind_speed_sensor.measure_wind_speed()  # 풍속 측정
+                try:
+                    # 숫자로만 들어온 경우 처리
+                    if usb_received_data.isdigit():
+                        dust_sensor = int(usb_received_data)
+                    else:  # JSON 형식으로 들어온 경우 처리
+                        dust_data = eval(usb_received_data)  # 예: {"dust_sensor": 10}
+                        dust_sensor = dust_data.get("dust_sensor", 0)
+                except Exception:
+                    # 유효하지 않은 데이터는 무시하고 넘어감
+                    continue
 
-                # Print all data together
-                print(f"Temperature: {temperature:.1f} °C")
-                print(f"Humidity: {humidity:.1f} %")
-                print(f"Pressure: {pressure:.1f} hPa")
-                print(f"Altitude: {altitude:.2f} m")
-                print(f"Wind Direction: {wind_direction}")
-                print(f"Wind Speed: {wind_speed:.2f} km/h")  # 풍속 출력
-                print(f"Rainfall Detected: {rainfall:.2f} mm")
-                print(f"Dust sensor Received: {usb_received_data}\n")
-            
-            time.sleep(1)  # Adjust the delay as needed
+                print(f"Dust Sensor: {dust_sensor}")
+
+                # 창문 상태 제어
+                if dust_sensor > dust_threshold and window_state == "closed":
+                    print("Air quality poor, opening window...")
+                    motor_controller.open_window()
+                    window_state = "open"
+
+                elif dust_sensor <= dust_threshold and window_state == "open":
+                    print("Air quality normal, closing window...")
+                    motor_controller.close_window()
+                    window_state = "closed"
+
+            time.sleep(1)  # 1초 대기
+
     except KeyboardInterrupt:
-        print("Stopping all sensors...")
+        print("Stopping program...")
     except Exception as e:
         print(f"Error: {e}")
     finally:
         # Cleanup
-        usb_serial.close()  # Close USB serial port
-        rain_sensor.cleanup()  # Clean up GPIO resources for rain sensor
-        wind_speed_sensor.cleanup()  # Clean up GPIO resources for wind speed sensor
+        usb_serial.close()
+        motor_controller.cleanup()
+        rain_sensor.cleanup()
+        wind_speed_sensor.cleanup()
 
 if __name__ == "__main__":
     main()
